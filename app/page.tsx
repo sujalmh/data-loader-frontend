@@ -87,7 +87,7 @@ const FileUpload = ({ files, setFiles, setUploadStatus }) => {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
+      console.log(apiUrl);
       const response = await fetch(`${apiUrl}/ingest-files/`, {
         method: 'POST',
         body: formData,
