@@ -22,6 +22,21 @@ import IngestionProcess from "@/components/ingestion-process"
 import SummaryView from "@/components/summary-view"
 
 // --- Type Definitions ---
+export type AnalysisData = {
+  file_name?: string;
+  content_type?: string;
+  domain?: string;
+  subdomain?: string;
+  intents?: string;
+  publishing_authority?: string;
+  published_date?: string;
+  period_of_reference?: string;
+  brief_summary?: string;
+  document_size?: string;
+  error?: string;
+}
+
+
 export type FileData = {
   id: string
   name: string
@@ -34,12 +49,12 @@ export type FileData = {
   uploaded?: boolean // New: Track upload status per file
   qualityMetrics?: {
     parseAccuracy: number
-    completeness: number
     complexity: number
   }
   classification?: "Structured" | "Semi-Structured" | "Unstructured"
   ingestionStatus?: "pending" | "success" | "failed"
   ingestionDetails?: any
+  analysis?: AnalysisData; 
 }
 
 export type DatabaseConfig = {
@@ -88,7 +103,7 @@ const FileUpload = ({ files, setFiles, setUploadStatus }) => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       console.log(apiUrl);
-      const response = await fetch(`${apiUrl}/ingest-files/`, {
+      const response = await fetch(`${apiUrl}/upload-files/`, {
         method: 'POST',
         body: formData,
       });
@@ -101,13 +116,22 @@ const FileUpload = ({ files, setFiles, setUploadStatus }) => {
       const result = await response.json();
       console.log('Upload successful:', result);
 
-      // Mark files as uploaded in the state
-      const uploadedFileNames = result.stored_files || [];
+      const uploadedFiles = result.files || [];
+
       setFiles(prevFiles =>
-        prevFiles.map(f =>
-          uploadedFileNames.includes(f.name) ? { ...f, uploaded: true } : f
-        )
+        prevFiles.map(f => {
+          const uploaded = uploadedFiles.find(uf => uf.name === f.name);
+          if (uploaded) {
+            return {
+              ...f,
+              uploaded: true,
+              path: uploaded.path  // ✅ save backend file path
+            };
+          }
+          return f;
+        })
       );
+
 
       setUploadStatus('success');
     } catch (err) {

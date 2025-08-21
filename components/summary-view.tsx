@@ -249,10 +249,59 @@ export default function SummaryView({ files, databaseConfig }: SummaryViewProps)
                                                             ))}
                                                         </div>
                                                     )}
-                                                    {/* Add similar logic for "semi-structured" and "unstructured" if their API responses become available */}
-                                                    {(file.ingestionDetails.type === "semi-structured" || file.ingestionDetails.type === "unstructured") && (
-                                                        <div className="p-3 border rounded text-sm">
-                                                            Details for {file.ingestionDetails.type} files are not available in this version.
+
+                                                    {file.ingestionDetails.type === "unstructured" && (
+                                                        <div className="p-3 border rounded space-y-2 text-sm">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Database className="w-4 h-4 text-purple-500" />
+                                                                <span className="font-medium">Vector Ingestion</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                                                <div>
+                                                                    <strong>Collection:</strong> {file.ingestionDetails.collection}
+                                                                </div>
+                                                                <div>
+                                                                    <strong>Chunks:</strong> {file.ingestionDetails.chunksCreated.toLocaleString()}
+                                                                </div>
+                                                                <div>
+                                                                    <strong>Embeddings:</strong> {file.ingestionDetails.embeddingsGenerated.toLocaleString()}
+                                                                </div>
+                                                                <div className="col-span-2">
+                                                                    <strong>Model:</strong> {file.ingestionDetails.embeddingModel}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {/* --- END: Added UI for Unstructured Data --- */}
+
+                                                    {/* --- START: Added UI for Semi-Structured Data --- */}
+                                                    {file.ingestionDetails.type === "semi-structured" && (
+                                                        <div className="space-y-3">
+                                                            {/* Structured Part */}
+                                                            <div className="p-3 border rounded space-y-2 text-sm">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Table className="w-4 h-4 text-blue-500" />
+                                                                    <span className="font-medium">Structured Part: {file.ingestionDetails.structuredData.tableName}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <strong>Rows Inserted:</strong> {file.ingestionDetails.structuredData.rowsInserted.toLocaleString()}
+                                                                </div>
+                                                            </div>
+                                                            {/* Unstructured Part */}
+                                                            <div className="p-3 border rounded space-y-2 text-sm">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Database className="w-4 h-4 text-purple-500" />
+                                                                    <span className="font-medium">Unstructured Part: {file.ingestionDetails.unstructuredData.collection}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                                                    <div>
+                                                                        <strong>Chunks:</strong> {file.ingestionDetails.unstructuredData.chunksCreated.toLocaleString()}
+                                                                    </div>
+                                                                    <div>
+                                                                        <strong>Embeddings:</strong> {file.ingestionDetails.unstructuredData.embeddingsGenerated.toLocaleString()}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>

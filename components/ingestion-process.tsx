@@ -61,8 +61,9 @@ type IngestionDetails = (StructuredIngestionDetails | SemiStructuredIngestionDet
 type FileIngestionResult = {
     fileName: string;
     fileSize: number;
-    status: "success" | "failed"; // Simplified for demonstration
-    ingestionDetails: StructuredIngestionDetails | null;
+    status: "success" | "failed";
+    // This now accepts all possible ingestion detail types from the API
+    ingestionDetails: StructuredIngestionDetails | UnstructuredIngestionDetails | SemiStructuredIngestionDetails | null;
     error: string | null;
 };
 
@@ -362,6 +363,32 @@ export default function IngestionProcess({
                                                     </div>
                                                 )}
 
+                                                {file.ingestionDetails.type === "unstructured" && (
+                                                    <div className="space-y-3 border-l-2 border-purple-500 pl-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Database className="w-4 h-4 text-purple-500" />
+                                                            <h4 className="font-semibold">Vector Ingestion Details</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                            <div>
+                                                                <strong>Collection:</strong> {file.ingestionDetails.collection}
+                                                            </div>
+                                                            <div>
+                                                                <strong>Chunks Created:</strong> {file.ingestionDetails.chunksCreated.toLocaleString()}
+                                                            </div>
+                                                            <div>
+                                                                <strong>Embeddings:</strong> {file.ingestionDetails.embeddingsGenerated.toLocaleString()}
+                                                            </div>
+                                                            <div>
+                                                                <strong>Chunking Method:</strong> {file.ingestionDetails.chunkingMethod}
+                                                            </div>
+                                                            <div className="md:col-span-2">
+                                                                <strong>Embedding Model:</strong> {file.ingestionDetails.embeddingModel}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
                                                 {/* UI for Semi-Structured and Unstructured remain the same */}
 
                                                 <div className="text-xs text-gray-500 mt-4">

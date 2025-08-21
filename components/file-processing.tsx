@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Play, RotateCcw, FileText, CheckCircle, Clock, AlertCircle } from "lucide-react"
-import type { FileData } from "@/app/page"
+import { Play, RotateCcw, FileText, CheckCircle, Clock, AlertCircle, BookOpen } from "lucide-react"
+import type { FileData, AnalysisData } from "@/app/page"
 
 interface FileProcessingProps {
   files: FileData[]
@@ -16,16 +16,23 @@ interface FileProcessingProps {
   setProgress: (progress: number) => void
 }
 
-// Define a type for the API response to ensure type safety
 interface ApiResult {
   fileName: string;
   qualityMetrics: {
     parseAccuracy: number;
-    completeness: number;
     complexity: number;
   };
   classification: "Structured" | "Semi-Structured" | "Unstructured";
+  analysis: AnalysisData; // Added to match the backend response
 }
+
+interface FileProcessingProps {
+  files: FileData[]
+  setFiles: (updater: (prevFiles: FileData[]) => FileData[]) => void
+  progress: number
+  setProgress: (progress: number) => void
+}
+
 
 export default function FileProcessing({ files, setFiles, progress, setProgress }: FileProcessingProps) {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -49,6 +56,7 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
               processed: false,
               qualityMetrics: undefined,
               classification: undefined,
+              analysis: undefined, // Reset analysis field
             }
           : f,
       ),
@@ -61,20 +69,14 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
       }
     })
 
-    // Simulate progress while uploading/processing
+    // Simulate progress
     const progressInterval = setInterval(() => {
-        setProgress(oldProgress => {
-            if (oldProgress < 95) {
-                return oldProgress + 1;
-            }
-            return oldProgress;
-        });
+        setProgress(oldProgress => oldProgress < 95 ? oldProgress + 1 : oldProgress);
     }, 150);
 
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
       const response = await fetch(`${apiUrl}/process-files`, {
         method: "POST",
         body: formData,
@@ -89,29 +91,20 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
 
       const results: ApiResult[] = await response.json()
       
-      // *** MODIFIED STATE UPDATE LOGIC ***
-      // This logic is more robust for updating the state based on the API response.
+      // Update state with results from the API
       setFiles((prevFiles) => {
-        // Create a map of results for efficient lookup (O(1) access).
         const resultMap = new Map(results.map(r => [r.fileName, r]));
-
-        // Map over the previous state to produce the new state.
         return prevFiles.map(file => {
-          // Check if a result exists for the current file's name.
           const result = resultMap.get(file.name);
-
-          // Only update files that were selected for processing and have a corresponding result.
           if (file.selected && result) {
-            // Return a new, updated file object.
             return {
               ...file,
               processed: true,
               qualityMetrics: result.qualityMetrics,
               classification: result.classification,
+              analysis: result.analysis, // Store the new analysis object
             };
           }
-
-          // Otherwise, return the file unchanged.
           return file;
         });
       });
@@ -129,19 +122,21 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
   }
 
   const resetProcessing = () => {
-    // Use the functional update form for `setFiles` to avoid issues with stale state.
     setFiles(prevFiles =>
       prevFiles.map((f) => ({
         ...f,
         processed: false,
         qualityMetrics: undefined,
         classification: undefined,
+        analysis: undefined, // Also reset the analysis field
       })),
     )
     setProgress(0)
     setError(null);
     setProcessedFileCount(0);
   }
+
+  // --- Helper functions for rendering badges ---
 
   const getQualityBadge = (score: number) => {
     if (score >= 3) return <Badge className="bg-green-500 hover:bg-green-600">Excellent</Badge>
@@ -163,9 +158,8 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
     }
   }
 
-  // This new function provides specific labels for the complexity score.
   const getComplexityDisplay = (score: number) => {
-    switch (score) {
+    switch (Math.round(score)) {
       case 1:
         return <Badge className="bg-red-500 hover:bg-red-600">Hard</Badge>;
       case 2:
@@ -177,18 +171,17 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
     }
   }
 
-  // This function determines which status icon to show for a file.
   const getFileStatus = (file: FileData) => {
     if (file.processed) {
       return <CheckCircle className="w-5 h-5 text-green-500" />
     }
-    // During processing, show a spinning clock only for selected files.
     if (isProcessing && file.selected) {
       return <Clock className="w-5 h-5 text-blue-500 animate-spin" />
     }
-    // Default icon for pending or unselected files.
     return <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
   }
+
+  // --- Render ---
 
   return (
     <div className="space-y-6">
@@ -205,32 +198,21 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
         <CardContent>
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
             <div className="flex items-center gap-4">
-                <Button
-                  onClick={startProcessing}
-                  disabled={isProcessing || selectedFiles.length === 0}
-                  className="flex items-center gap-2 w-40"
-                >
-                  <Play className="w-4 h-4" />
-                  {isProcessing ? "Processing..." : "Start Processing"}
+                <Button onClick={startProcessing} disabled={isProcessing || selectedFiles.length === 0} className="flex items-center gap-2 w-40">
+                    <Play className="w-4 h-4" />
+                    {isProcessing ? "Processing..." : "Start Processing"}
                 </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={resetProcessing}
-                  disabled={isProcessing}
-                  className="flex items-center gap-2 bg-transparent"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Reset
+                <Button variant="outline" onClick={resetProcessing} disabled={isProcessing} className="flex items-center gap-2 bg-transparent">
+                    <RotateCcw className="w-4 h-4" />
+                    Reset
                 </Button>
             </div>
-
             <div className="flex-1 w-full">
-              <div className="flex justify-between text-sm mb-1">
-                <span>Progress</span>
-                <span>{Math.round(progress)}%</span>
-              </div>
-              <Progress value={progress} className="w-full" />
+                <div className="flex justify-between text-sm mb-1">
+                    <span>Progress</span>
+                    <span>{Math.round(progress)}%</span>
+                </div>
+                <Progress value={progress} className="w-full" />
             </div>
           </div>
           
@@ -260,17 +242,15 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
                   <TableHead className="w-12">Status</TableHead>
                   <TableHead>File Name</TableHead>
                   <TableHead>Parse Accuracy</TableHead>
-                  <TableHead>Completeness</TableHead>
                   <TableHead>Complexity</TableHead>
                   <TableHead>Classification</TableHead>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>Summary</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {selectedFiles.map((file) => (
-                  <TableRow
-                    key={file.id}
-                    className={file.processed ? "bg-green-50/50" : ""}
-                  >
+                  <TableRow key={file.id} className={file.processed ? "bg-green-50/50" : ""}>
                     <TableCell>{getFileStatus(file)}</TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -293,20 +273,7 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
                     <TableCell>
                       {file.qualityMetrics ? (
                         <div className="flex items-center gap-2">
-                          <span>{file.qualityMetrics.completeness}/3</span>
-                          {getQualityBadge(file.qualityMetrics.completeness)}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">
-                          {isProcessing && file.selected ? "Processing..." : "Pending"}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {/* MODIFIED: Use the new display function for complexity */}
-                      {file.qualityMetrics ? (
-                        <div className="flex items-center gap-2">
-                          <span>{file.qualityMetrics.complexity}/3</span>
+                          <span>{Math.round(file.qualityMetrics.complexity)}/3</span>
                           {getComplexityDisplay(file.qualityMetrics.complexity)}
                         </div>
                       ) : (
@@ -318,6 +285,29 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
                     <TableCell>
                       {file.classification ? (
                         getClassificationBadge(file.classification)
+                      ) : (
+                        <span className="text-gray-400">
+                          {isProcessing && file.selected ? "Analyzing..." : "Pending"}
+                        </span>
+                      )}
+                    </TableCell>
+                    {/* New Cell for Domain */}
+                    <TableCell>
+                      {file.analysis?.domain ? (
+                         <Badge variant="outline">{file.analysis.domain}</Badge>
+                      ) : (
+                        <span className="text-gray-400">
+                          {isProcessing && file.selected ? "Analyzing..." : "Pending"}
+                        </span>
+                      )}
+                    </TableCell>
+                    {/* New Cell for Summary */}
+                    <TableCell className="text-xs text-gray-600 max-w-xs truncate">
+                      {file.analysis?.brief_summary ? (
+                        <div className="flex items-start gap-2">
+                          <BookOpen className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <span>{file.analysis.brief_summary}</span>
+                        </div>
                       ) : (
                         <span className="text-gray-400">
                           {isProcessing && file.selected ? "Analyzing..." : "Pending"}
