@@ -23,18 +23,19 @@ import SummaryView from "@/components/summary-view"
 
 // --- Type Definitions ---
 export type AnalysisData = {
-  file_name?: string;
-  content_type?: string;
-  domain?: string;
-  subdomain?: string;
-  intents?: string;
-  publishing_authority?: string;
-  published_date?: string;
-  period_of_reference?: string;
-  brief_summary?: string;
-  document_size?: string;
-  error?: string;
-}
+    file_name?: string | null;
+    content_type?: string | null;
+    domain?: string | null;
+    subdomain?: string | null;
+    intents?: string | string[] | null;
+    publishing_authority?: string | null;
+    published_date?: string | null;
+    period_of_reference?: string | null;
+    brief_summary?: string | null;
+    document_size?: string | null;
+    extra_fields?: Record<string, any>;
+    error?: string | null;
+};
 
 
 export type FileData = {
@@ -53,9 +54,51 @@ export type FileData = {
   }
   classification?: "Structured" | "Semi-Structured" | "Unstructured"
   ingestionStatus?: "pending" | "success" | "failed"
-  ingestionDetails?: any
+  ingestionDetails?: IngestionDetails
   analysis?: AnalysisData; 
 }
+
+export type ColumnSchema = {
+    name: string;
+    type: string;
+    primary?: boolean;
+};
+
+export type TableDetails = {
+    tableName: string;
+    schema_details: ColumnSchema[];
+    rowsInserted: number;
+    sqlCommands: string[];
+    fileSelectorPrompt?: string;
+};
+
+export type StructuredIngestionDetails = {
+    type: "structured";
+    tables: TableDetails[];
+};
+
+export type UnstructuredIngestionDetails = {
+    type: "unstructured";
+    collection: string;
+    chunksCreated: number;
+    embeddingsGenerated: number;
+    chunkingMethod: string;
+    embeddingModel: string;
+};
+
+export type IngestionDetails = (StructuredIngestionDetails | UnstructuredIngestionDetails) & {
+    startTime: string;
+    endTime: string;
+};
+
+export type FileIngestionResult = {
+    fileName: string;
+    fileSize: number;
+    status: "success" | "failed";
+    ingestionDetails: IngestionDetails | IngestionDetails[] | null;
+    error: string | null;
+};
+
 
 export type DatabaseConfig = {
   structured: {
@@ -189,9 +232,8 @@ const steps = [
   { id: 2, title: "Upload Files", icon: UploadCloud }, // New step
   { id: 3, title: "File Processing", icon: FileText },
   { id: 4, title: "File Selection", icon: Filter },
-  { id: 5, title: "Database Config", icon: Database },
-  { id: 6, title: "Ingestion", icon: ArrowRight },
-  { id: 7, title: "Summary", icon: CheckCircle },
+  { id: 5, title: "Ingestion", icon: ArrowRight },
+  { id: 6, title: "Summary", icon: CheckCircle },
 ]
 
 export default function DataLoaderAutomation() {
@@ -311,8 +353,7 @@ export default function DataLoaderAutomation() {
               />
             )}
             {currentStep === 4 && <FileSelectionForIngestion files={files} setFiles={setFiles} />}
-            {currentStep === 5 && <DatabaseConfiguration config={databaseConfig} setConfig={setDatabaseConfig} />}
-            {currentStep === 6 && (
+            {currentStep === 5 && (
               <IngestionProcess
                 files={files}
                 setFiles={setFiles}
@@ -321,7 +362,7 @@ export default function DataLoaderAutomation() {
                 setProgress={setIngestionProgress}
               />
             )}
-            {currentStep === 7 && <SummaryView files={files} databaseConfig={databaseConfig} />}
+            {currentStep === 6 && <SummaryView files={files} databaseConfig={databaseConfig} />}
           </CardContent>
         </Card>
 

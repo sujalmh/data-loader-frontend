@@ -25,7 +25,7 @@ type AnalysisResult = {
     content_type?: string | null;
     domain?: string | null;
     subdomain?: string | null;
-    intents?: string[] | null;
+    intents?: string | string[] | null;
     publishing_authority?: string | null;
     published_date?: string | null;
     period_of_reference?: string | null;
@@ -34,7 +34,6 @@ type AnalysisResult = {
     extra_fields?: Record<string, any>;
     error?: string | null;
 };
-
 
 interface ApiResult {
   fileName: string;
@@ -394,9 +393,15 @@ export default function FileProcessing({ files, setFiles, progress, setProgress 
                             label="Intents" 
                             value={
                                 <div className="flex flex-wrap gap-1">
-                                    {selectedFileForDetails.analysis.intents?.map((intent, idx) => (
-                                        <Badge key={idx} variant="default">{intent}</Badge>
-                                    ))}
+                                  {selectedFileForDetails.analysis.intents && (
+                                    <>
+                                      {Array.isArray(selectedFileForDetails.analysis.intents)
+                                        ? selectedFileForDetails.analysis.intents.map((intent, idx) => (
+                                            <Badge key={idx} variant="default">{intent}</Badge>
+                                          ))
+                                        : <Badge variant="default">{selectedFileForDetails.analysis.intents}</Badge>}
+                                    </>
+                                  )}
                                 </div>
                             }
                         />

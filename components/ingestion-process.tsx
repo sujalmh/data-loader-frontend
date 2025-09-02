@@ -9,8 +9,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Play, ChevronDown, ChevronRight, Database, FileText, Table, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react"
 import type { FileData, DatabaseConfig } from "@/app/page"
 
-// NOTE: These types should ideally be shared with the backend
-// to ensure consistency.
+// ## Type Definitions
+// These types define the shape of the data used throughout the component.
+
 type ColumnSchema = {
     name: string;
     type: string;
@@ -22,24 +23,12 @@ type TableDetails = {
     schema_details: ColumnSchema[];
     rowsInserted: number;
     sqlCommands: string[];
+    fileSelectorPrompt?: string;
 };
 
 type StructuredIngestionDetails = {
     type: "structured";
     tables: TableDetails[];
-};
-
-type SemiStructuredIngestionDetails = {
-    type: "semi-structured";
-    structuredData: {
-        tableName: string;
-        rowsInserted: number;
-    };
-    unstructuredData: {
-        collection: string;
-        chunksCreated: number;
-        embeddingsGenerated: number;
-    };
 };
 
 type UnstructuredIngestionDetails = {
@@ -51,19 +40,16 @@ type UnstructuredIngestionDetails = {
     embeddingModel: string;
 };
 
-type IngestionDetails = (StructuredIngestionDetails | SemiStructuredIngestionDetails | UnstructuredIngestionDetails) & {
-    // These are from the client-side mock for now, but would come from the API in a real app
+type IngestionDetails = (StructuredIngestionDetails | UnstructuredIngestionDetails) & {
     startTime: string;
     endTime: string;
 };
 
-// NEW: Type to match the API response for a single file
 type FileIngestionResult = {
     fileName: string;
     fileSize: number;
     status: "success" | "failed";
-    // This now accepts all possible ingestion detail types from the API
-    ingestionDetails: StructuredIngestionDetails | UnstructuredIngestionDetails | SemiStructuredIngestionDetails | null;
+    ingestionDetails: IngestionDetails | IngestionDetails[] | null;
     error: string | null;
 };
 
@@ -89,8 +75,8 @@ export default function IngestionProcess({
     const selectedFiles = files.filter((f) => f.selected && f.processed)
 
     /**
-     * Handles the actual API call for ingesting a given list of files.
-     * This function is used by both the initial ingestion and the retry logic.
+     * Handles the API call for ingesting a list of files.
+     * It sets the file status to "pending", sends the data, and processes the response.
      */
     const handleIngestion = async (filesToProcess: FileData[]) => {
         if (filesToProcess.length === 0) return;
@@ -121,7 +107,6 @@ export default function IngestionProcess({
 
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
             const response = await fetch(`${apiUrl}/ingest/`, {
                 method: "POST",
                 body: formData,
@@ -132,27 +117,42 @@ export default function IngestionProcess({
                 throw new Error(errorData.detail || "Ingestion request failed");
             }
 
-            // The API response is now typed as FileIngestionResult[]
             const resultData: { results: FileIngestionResult[] } = await response.json();
             const results = resultData.results;
             console.log("Ingestion API response:", results);
 
-            // Update file statuses based on API response
+            // Update file statuses based on the API response
             setFiles((prevFiles) => {
                 const newFiles = [...prevFiles];
                 results.forEach((result) => {
                     const fileIndex = newFiles.findIndex(f => f.name === result.fileName);
                     if (fileIndex !== -1) {
+                        
+                        const processIngestionDetails = (details: IngestionDetails | IngestionDetails[] | null): IngestionDetails | IngestionDetails[] | null => {
+                            if (!details) {
+                                return null;
+                            }
+                            const now = new Date().toISOString();
+                            if (Array.isArray(details)) {
+                                return details.map(d => ({
+                                    ...d,
+                                    startTime: now,
+                                    endTime: now,
+                                }));
+                            } else {
+                                return {
+                                    ...details,
+                                    startTime: now,
+                                    endTime: now,
+                                };
+                            }
+                        };
+
                         newFiles[fileIndex] = {
                             ...newFiles[fileIndex],
                             ingestionStatus: result.status,
-                            // Map the API's ingestionDetails to our state type, adding mock times for now
-                            ingestionDetails: result.ingestionDetails ? {
-                                ...result.ingestionDetails,
-                                startTime: new Date().toISOString(),
-                                endTime: new Date().toISOString(),
-                            } as IngestionDetails : null,
-                            error: result.error || undefined, // Set to undefined if null
+                            ingestionDetails: processIngestionDetails(result.ingestionDetails),
+                            error: result.error || undefined,
                         };
                     }
                 });
@@ -164,7 +164,7 @@ export default function IngestionProcess({
             const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
             setApiError(errorMessage);
 
-            // Mark only the files that were part of this processing batch as failed
+            // Mark pending files as failed on API error
             setFiles((prevFiles) =>
                 prevFiles.map((f) =>
                     f.ingestionStatus === "pending"
@@ -175,9 +175,6 @@ export default function IngestionProcess({
         } finally {
             setIsIngesting(false);
             setProgress(100);
-            setTimeout(() => {
-                // This can trigger auto-advance in a parent component
-            }, 500);
         }
     }
 
@@ -207,7 +204,7 @@ export default function IngestionProcess({
     const getStatusBadge = (status?: string) => {
         switch (status) {
             case "success":
-                return <Badge className="bg-green-500 text-white">✓ Success</Badge>
+                return <Badge className="bg-green-500 hover:bg-green-600">✓ Success</Badge>
             case "failed":
                 return <Badge variant="destructive">✗ Failed</Badge>
             case "pending":
@@ -216,6 +213,69 @@ export default function IngestionProcess({
                 return <Badge variant="outline">Waiting</Badge>
         }
     }
+
+    /**
+     * Renders the details for a single ingestion event. This function is called
+     * for each item in the ingestionDetails array (if it's an array).
+     */
+    const renderIngestionDetails = (details: IngestionDetails) => {
+        return (
+            <div className="space-y-4">
+                {details.type === "structured" && (
+                    <div className="space-y-4">
+                        {details.tables.map((table, tableIndex) => (
+                            <div key={tableIndex} className="space-y-3 border-l-2 border-blue-500 pl-4">
+                                <div className="flex items-center gap-2">
+                                    <Table className="w-4 h-4 text-blue-500" />
+                                    <h4 className="font-semibold">Table: {table.tableName}</h4>
+                                </div>
+                                {table.fileSelectorPrompt && (
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Table className="w-4 h-4 text-blue-500" />
+                                        <span className="font-medium">File Selector Prompt: {table.fileSelectorPrompt}</span>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <strong>Rows Inserted:</strong> {table.rowsInserted.toLocaleString()}
+                                    </div>
+                                    <div>
+                                        <strong>Schema Details:</strong>
+                                        <div className="mt-1 p-2 bg-gray-50 rounded text-xs font-mono max-h-40 overflow-y-auto">
+                                            {table.schema_details.map((schema, s_index) => (
+                                                <div key={s_index}>
+                                                    {schema.name} ({schema.type})
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {details.type === "unstructured" && (
+                    <div className="space-y-3 border-l-2 border-purple-500 pl-4">
+                        <div className="flex items-center gap-2">
+                            <Database className="w-4 h-4 text-purple-500" />
+                            <h4 className="font-semibold">Vector Ingestion Details</h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                            <div><strong>Collection:</strong> {details.collection}</div>
+                            <div><strong>Chunks Created:</strong> {details.chunksCreated.toLocaleString()}</div>
+                            <div><strong>Embeddings:</strong> {details.embeddingsGenerated.toLocaleString()}</div>
+                            <div><strong>Chunking Method:</strong> {details.chunkingMethod}</div>
+                            <div className="md:col-span-2"><strong>Embedding Model:</strong> {details.embeddingModel}</div>
+                        </div>
+                    </div>
+                )}
+                <div className="text-xs text-gray-500 pt-2 border-t mt-4">
+                    <div>Started: {new Date(details.startTime).toLocaleString()}</div>
+                    <div>Completed: {new Date(details.endTime).toLocaleString()}</div>
+                </div>
+            </div>
+        );
+    };
 
     const successCount = selectedFiles.filter((f) => f.ingestionStatus === "success").length
     const failedCount = selectedFiles.filter((f) => f.ingestionStatus === "failed").length
@@ -229,7 +289,7 @@ export default function IngestionProcess({
                 <p className="text-gray-600">Ingest selected files into configured databases</p>
             </div>
 
-            {/* Ingestion Control */}
+            {/* Ingestion Control Card */}
             <Card>
                 <CardHeader>
                     <CardTitle>Ingestion Control</CardTitle>
@@ -246,7 +306,6 @@ export default function IngestionProcess({
                             {isIngesting ? "Ingesting..." : "Start Ingestion"}
                         </Button>
                         
-                        {/* --- NEW: Retry Failed Button --- */}
                         {failedCount > 0 && !isIngesting && (
                             <Button
                                 onClick={retryFailedIngestion}
@@ -258,7 +317,6 @@ export default function IngestionProcess({
                                 Retry {failedCount} Failed
                             </Button>
                         )}
-                        {/* --- END NEW --- */}
 
                         <div className="flex-1">
                             <div className="flex justify-between text-sm mb-1">
@@ -277,15 +335,15 @@ export default function IngestionProcess({
                     )}
 
                     <div className="grid grid-cols-3 gap-4 mt-4">
-                        <div className="text-center">
+                        <div className="text-center p-2 border rounded-lg">
                             <div className="text-2xl font-bold text-green-600">{successCount}</div>
                             <div className="text-sm text-gray-600">Successful</div>
                         </div>
-                        <div className="text-center">
+                        <div className="text-center p-2 border rounded-lg">
                             <div className="text-2xl font-bold text-red-600">{failedCount}</div>
                             <div className="text-sm text-gray-600">Failed</div>
                         </div>
-                        <div className="text-center">
+                        <div className="text-center p-2 border rounded-lg">
                             <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
                             <div className="text-sm text-gray-600">Processing</div>
                         </div>
@@ -293,7 +351,7 @@ export default function IngestionProcess({
                 </CardContent>
             </Card>
 
-            {/* Ingestion Results */}
+            {/* Ingestion Results Card */}
             <Card>
                 <CardHeader>
                     <CardTitle>Ingestion Results</CardTitle>
@@ -306,11 +364,7 @@ export default function IngestionProcess({
                                 <div className="border rounded-lg p-4">
                                     <CollapsibleTrigger className="flex items-center justify-between w-full text-left">
                                         <div className="flex items-center gap-3">
-                                            {expandedFiles.has(file.id) ? (
-                                                <ChevronDown className="w-4 h-4" />
-                                            ) : (
-                                                <ChevronRight className="w-4 h-4" />
-                                            )}
+                                            {expandedFiles.has(file.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                             <FileText className="w-4 h-4" />
                                             <span className="font-medium">{file.name}</span>
                                             <Badge variant="outline">{file.classification}</Badge>
@@ -318,7 +372,7 @@ export default function IngestionProcess({
                                         </div>
                                     </CollapsibleTrigger>
 
-                                    <CollapsibleContent className="mt-4 pl-7">
+                                    <CollapsibleContent className="mt-4 pt-4 border-t pl-8">
                                         {file.ingestionStatus === 'failed' && file.error && (
                                             <div className="p-3 bg-red-50 text-red-700 rounded-md text-sm">
                                                 <strong>Error:</strong> {file.error}
@@ -326,75 +380,14 @@ export default function IngestionProcess({
                                         )}
                                         {file.ingestionDetails && (
                                             <div className="space-y-4">
-                                                {file.ingestionDetails.type === "structured" && (
-                                                    <div className="space-y-4">
-                                                        {file.ingestionDetails.tables.map((table, index) => (
-                                                            <div key={index} className="space-y-3 border-l-2 border-blue-500 pl-4">
-                                                                <div className="flex items-center gap-2">
-                                                                    <Table className="w-4 h-4 text-blue-500" />
-                                                                    <h4 className="font-semibold">Table: {table.tableName}</h4>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                                                    <div>
-                                                                        <strong>Rows Inserted:</strong> {table.rowsInserted.toLocaleString()}
-                                                                    </div>
-                                                                    {/* NEW: Displaying schema details */}
-                                                                    <div>
-                                                                        <strong>Schema Details:</strong>
-                                                                        <div className="mt-1 p-2 bg-gray-50 rounded text-xs font-mono max-h-40 overflow-y-auto">
-                                                                            {table.schema_details.map((schema, s_index) => (
-                                                                                <div key={s_index}>
-                                                                                    {schema.name} ({schema.type})
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <strong>SQL Commands:</strong>
-                                                                    <div className="mt-2 p-3 bg-gray-50 rounded text-xs font-mono space-y-2">
-                                                                        {table.sqlCommands.map((cmd: string, idx: number) => (
-                                                                            <div key={idx}>{cmd}</div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {file.ingestionDetails.type === "unstructured" && (
-                                                    <div className="space-y-3 border-l-2 border-purple-500 pl-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <Database className="w-4 h-4 text-purple-500" />
-                                                            <h4 className="font-semibold">Vector Ingestion Details</h4>
+                                                {/* This logic correctly handles both an array and a single object */}
+                                                {(Array.isArray(file.ingestionDetails) ? file.ingestionDetails : [file.ingestionDetails]).map(
+                                                    (details, index) => (
+                                                        <div key={index}>
+                                                            {renderIngestionDetails(details)}
                                                         </div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                                            <div>
-                                                                <strong>Collection:</strong> {file.ingestionDetails.collection}
-                                                            </div>
-                                                            <div>
-                                                                <strong>Chunks Created:</strong> {file.ingestionDetails.chunksCreated.toLocaleString()}
-                                                            </div>
-                                                            <div>
-                                                                <strong>Embeddings:</strong> {file.ingestionDetails.embeddingsGenerated.toLocaleString()}
-                                                            </div>
-                                                            <div>
-                                                                <strong>Chunking Method:</strong> {file.ingestionDetails.chunkingMethod}
-                                                            </div>
-                                                            <div className="md:col-span-2">
-                                                                <strong>Embedding Model:</strong> {file.ingestionDetails.embeddingModel}
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    )
                                                 )}
-                                                
-                                                {/* UI for Semi-Structured and Unstructured remain the same */}
-
-                                                <div className="text-xs text-gray-500 mt-4">
-                                                    <div>Started: {new Date(file.ingestionDetails.startTime).toLocaleString()}</div>
-                                                    <div>Completed: {new Date(file.ingestionDetails.endTime).toLocaleString()}</div>
-                                                </div>
                                             </div>
                                         )}
                                     </CollapsibleContent>
@@ -404,6 +397,8 @@ export default function IngestionProcess({
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Completion Message */}
             {!isIngesting && progress === 100 && (
                 <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center gap-2 text-green-800">
@@ -416,5 +411,5 @@ export default function IngestionProcess({
                 </div>
             )}
         </div>
-    )
+    );
 }
